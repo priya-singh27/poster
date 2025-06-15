@@ -1,4 +1,3 @@
-const { error } = require('console');
 const Butter = require('./butter');
 
 const SESSIONS = []
@@ -34,20 +33,77 @@ const PORT=8000
 
 const server = new Butter();
 
-//******* Files Routes *******//
-server.route("get", '/', (req,res)=>{
-    console.log('Server got the request!!!');
-    res.sendFile('./public/index.html', 'text/html');
+//For authentication
+server.beforeEach((req,res, next)=>{
+
+    const routeToAuthenticate = [
+        "GET /api/user",
+        "PUT /api/user",
+        "POST /api/posts",
+        "DELETE /api/logout"
+    ]
+
+    if(routeToAuthenticate.indexOf(req.method+" "+req.url) !== -1){
+
+        if(req.headers.cookie){
+            const cookies = req.headers.cookie.split("; ");
+            let token;
+            for(let cookie of cookies){
+                const [key, value] = cookie.split("=");
+                if(key === "token"){
+                    token = value;
+                }
+            }
+        
+            const session  = SESSIONS.find((session) => session.token === token);
+    
+            if(session){
+                req.userId = session.userId;
+                return next();
+            }
+        }
+
+        return res.status(401).json({error:"Unauthorized"})
+    }else{
+        next();
+    }
+
 });
 
-server.route("get", '/login', (req,res)=>{
-    res.sendFile('./public/index.html', 'text/html');
+//For parsing JSON body
+server.beforeEach((req,res, next)=>{
+    if(req.headers["content-type"] === "application/json"){
+        let body = ""
+        req.on('data', (chunk)=>{
+            body+=chunk.toString('utf-8');
+        });
+
+        req.on('end', ()=>{
+            body= JSON.parse(body);//js object from js string
+            req.body =body
+            return next();
+        });
+    }else{
+        next();
+    }
 });
 
-server.route("get", '/profile', (req,res)=>{
-    res.sendFile('./public/index.html', 'text/html');
-});
+//For different routes that need the index.html file,
+server.beforeEach((req,res, next)=>{
+    const routes = [
+        '/',
+        '/login',
+        '/profile',
+        '/new-post'
+    ]
+    if(routes.indexOf(req.url) !== -1 && req.method === 'GET'){
+        return res.status(200).sendFile('./public/index.html', 'text/html');
+    }else{
+        next();
+    }
+})
 
+//----------- Files Routes -----------//
 server.route('get', '/styles.css', (req,res)=>{
     res.sendFile('./public/styles.css', 'text/css');
 });
@@ -56,12 +112,7 @@ server.route('get', '/script.js', (req,res)=>{
     res.sendFile('./public/script.js', 'text/javascript');
 });
 
-server.listen(PORT, ()=>{
-    console.log(`Listening on ${PORT}`);
-});
-
-
-//******* JSON Routes *******//
+//----------- JSON Routes -----------//
 server.route('get', '/api/posts', (req,res)=>{
 
     //now each object in POSTS have a property author. 
@@ -74,50 +125,84 @@ server.route('get', '/api/posts', (req,res)=>{
 });
 
 server.route('post', '/api/login', (req,res)=>{
-    let body = ""
-    req.on('data', (chunk)=>{
-        body+=chunk.toString('utf-8');
-    });
-
-    req.on('end', ()=>{
-        body= JSON.parse(body);//js object from js string
         
-        const username = body.username;
-        const password = body.password;
+    const username = req.body.username;
+    const password = req.body.password;
 
-        const user = USERS.find((user) => user.username === username);
-        if(user && user.password === password){
-            const token = Math.floor( Math.random()*1000000000).toString();
+    const user = USERS.find((user) => user.username === username);
+    if(user && user.password === password){
+        const token = Math.floor( Math.random()*1000000000).toString();
 
-            //save the generated token in db(not exactly)
-            SESSIONS.push({userId: user.id, token:token});
+        //save the generated token in db(not exactly)
+        SESSIONS.push({userId: user.id, token:token});
 
-            res.setHeader("Set-Cookie", `token=${token}; Path=/;`)//path ='/' means we want to send token in all the following requests
-            res.status(200).json({message: "Logged in successfully!"});
-        }else{
-            res.status(401).json({message: "Invalid username or password"});
-        }
-    })
+        res.setHeader("Set-Cookie", `token=${token}; Path=/;`)//path ='/' means we want to send token in all the following requests
+        res.status(200).json({message: "Logged in successfully!"});
+    }else{
+        res.status(401).json({message: "Invalid username or password"});
+    }
+   
 });
 
-//send user info
+//send user profile info
 server.route('get', '/api/user', (req,res)=>{
-    const cookies = req.headers.cookie.split("; ");
-    let token;
-    for(let cookie of cookies){
-        const [key, value] = cookie.split("=");
-        if(key === "token"){
-            token = value;
-        }
-    }
-
-    const session  =SESSIONS.find((session) => session.token === token);
-
-    if(session){
-        const user = USERS.find((user)=> user.id === session.userId);
-        res.status(200).json({username: user.username, name: user.name});
-    }else{
-        res.status(401).json({error: "Unauthorized"});
-    }
+    const user = USERS.find((user)=> user.id === req.userId);
+    res.status(200).json({username: user.username, name: user.name});
     
+});
+
+server.route('put', '/api/user', (req,res)=>{
+    const userName = req.body.username;
+    const name = req.body.name;
+    const password = req.body.password;
+
+    const user = USERS.find((user)=> user.id === req.userId);
+
+    user.username = userName;
+    user.name = name;
+
+    //optionally update password
+    if(password) user.password = password;
+
+    res.status(200).json({
+        username: userName,
+        name: name,
+        password_status: password?"updated":"not updated",
+    });
+});
+
+server.route("delete", '/api/logout', (req,res)=>{
+    //Remove the session object from SESSIONS array
+    const sessionIdx = SESSIONS.find(session=>session.userId === req.userId);
+    if(sessionIdx>-1){
+        SESSIONS.splice(sessionIdx, 1)
+    }
+
+    res.setHeader("Set-Cookie", `token=deleted; Path=/; Expires=Sun, 15 June 2025 00:00:00 GMT`)
+
+    res.status(200).json({
+        message:"Logged out successfully"
+    });
 })
+
+server.route('post', '/api/posts', (req,res)=>{
+    const title = req.body.title;
+    const body = req.body.body;
+
+    const post = {
+        id: POSTS.length+1,
+        title: title,
+        body: body,
+        userId : req.userId,
+    }
+
+    // POSTS.push(post);//adds at the end of the array
+    POSTS.unshift(post);//adds post at the start of the array
+    res.status(201).json(post);
+});
+
+//-------------------------------------
+
+server.listen(PORT, ()=>{
+    console.log(`Listening on ${PORT}`);
+});
