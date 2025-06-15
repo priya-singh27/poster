@@ -1,7 +1,4 @@
-const { error } = require('console');
 const Butter = require('./butter');
-
-const SESSIONS = []
 
 const USERS = [
     {id:1, name:"Priya Singh", username:'priya27', password:'string'},
@@ -30,21 +27,17 @@ const POSTS = [
     },
 ];
 
-const PORT=8000
+const PORT=8080
 
 const server = new Butter();
 
 //******* Files Routes *******//
 server.route("get", '/', (req,res)=>{
-    console.log('Server got the request!!!');
+    console.log('Server2 got the request!!!');
     res.sendFile('./public/index.html', 'text/html');
 });
 
 server.route("get", '/login', (req,res)=>{
-    res.sendFile('./public/index.html', 'text/html');
-});
-
-server.route("get", '/profile', (req,res)=>{
     res.sendFile('./public/index.html', 'text/html');
 });
 
@@ -87,12 +80,6 @@ server.route('post', '/api/login', (req,res)=>{
 
         const user = USERS.find((user) => user.username === username);
         if(user && user.password === password){
-            const token = Math.floor( Math.random()*1000000000).toString();
-
-            //save the generated token in db(not exactly)
-            SESSIONS.push({userId: user.id, token:token});
-
-            res.setHeader("Set-Cookie", `token=${token}; Path=/;`)//path ='/' means we want to send token in all the following requests
             res.status(200).json({message: "Logged in successfully!"});
         }else{
             res.status(401).json({message: "Invalid username or password"});
@@ -100,24 +87,24 @@ server.route('post', '/api/login', (req,res)=>{
     })
 });
 
-//send user info
-server.route('get', '/api/user', (req,res)=>{
-    const cookies = req.headers.cookie.split("; ");
-    let token;
-    for(let cookie of cookies){
-        const [key, value] = cookie.split("=");
-        if(key === "token"){
-            token = value;
+server.route('post', '/api/usloginer', (req,res)=>{
+    let body = ""
+    req.on('data', (chunk)=>{
+        body+=chunk.toString('utf-8');
+    });
+
+    req.on('end', ()=>{
+        body= JSON.parse(body);//js object from js string
+        
+        const username = body.username;
+        const password = body.password;
+
+        const user = USERS.find((user) => user.username === username);
+        if(user && user.password === password){
+            res.status(200).json({message: "Logged in successfully!"});
+        }else{
+            res.status(401).json({message: "Invalid username or password"});
         }
-    }
+    })
+});
 
-    const session  =SESSIONS.find((session) => session.token === token);
-
-    if(session){
-        const user = USERS.find((user)=> user.id === session.userId);
-        res.status(200).json({username: user.username, name: user.name});
-    }else{
-        res.status(401).json({error: "Unauthorized"});
-    }
-    
-})
