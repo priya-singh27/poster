@@ -1,8 +1,10 @@
 import { useContext, useState } from "react";
+import { useNavigate } from 'react-router-dom';
 import { AuthContext } from "./AuthContext";
 import '../styles/LoginForm.css'
 
 export default function Login() {
+    const navigate = useNavigate();
     const { setIsLoggedIn } = useContext(AuthContext);
     const [formData, setFormData] = useState({ username: '', password: '' });
     const [error, setError] = useState('');
@@ -34,6 +36,7 @@ export default function Login() {
 
             if (res.ok) {
                 setIsLoggedIn(true);
+                navigate('/home');
             } else {
                 const errorData = await res.json();
                 setError(errorData.message || 'Login failed');

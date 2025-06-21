@@ -54,13 +54,23 @@ server.beforeEach((req,res, next)=>{
                     token = value;
                 }
             }
+
+            console.log(`Token = ${token}`)
+            console.log(`Current SESSIONS:`, SESSIONS) // ADD THIS LINE
+            console.log(`Number of sessions:`, SESSIONS.length) 
         
             const session  = SESSIONS.find((session) => session.token === token);
     
             if(session){
                 req.userId = session.userId;
+                console.log("Got token successfully..")
                 return next();
+            }else{
+                console.log('No session found')
+                console.log('Available tokens:', SESSIONS.map(s => s.token)) 
             }
+        }else{
+            console.log('cookie not found')
         }
 
         return res.status(401).json({error:"Unauthorized"})
@@ -135,6 +145,7 @@ server.route('post', '/api/login', (req,res)=>{
 
         //save the generated token in db(not exactly)
         SESSIONS.push({userId: user.id, token:token});
+        console.log('Added session!')
 
         res.setHeader("Set-Cookie", `token=${token}; Path=/;`)//path ='/' means we want to send token in all the following requests
         res.status(200).json({message: "Logged in successfully!"});
